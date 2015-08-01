@@ -1,0 +1,4 @@
+#!/bin/bash
+bundle install
+gem build LiferayScan.gemspec
+gem install --local LiferayScan-0.0.1.gem

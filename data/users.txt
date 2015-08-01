@@ -1,0 +1,9 @@
+guest
+user
+admin
+administrator
+bruno
+test
+demo
+liferay
+liferayadmin
