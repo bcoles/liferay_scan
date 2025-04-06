@@ -1,0 +1,177 @@
+#!/usr/bin/env ruby
+#
+# This file is part of LiferayScan
+# https://github.com/bcoles/liferay_scan
+#
+
+require 'liferay_scan'
+require 'optparse'
+require 'terminal-table'
+require 'resolv'
+
+def banner
+  puts "
+   _     _  __                     _____
+  | |   (_)/ _|                   /  ___|
+  | |    _| |_ ___ _ __ __ _ _   _\\ `--.  ___ __ _ _ __
+  | |   | |  _/ _ \\ '__/ _` | | | |`--. \\/ __/ _` | '_ \\
+  | |___| | ||  __/ | | (_| | |_| /\\__/ / (_| (_| | | | |
+  \\_____/_|_| \\___|_|  \\__,_|\\__, \\____/ \\___\\__,_|_| |_|
+                              __/ |
+                             |___/             version #{LiferayScan::VERSION}"
+  puts
+  puts '-' * 60
+end
+
+banner
+options = {}
+opts = OptionParser.new do |opts|
+  opts.banner = 'Usage: liferay-scan [options]'
+
+  opts.on('-u URL', '--url URL', 'Liferay URL to scan') do |v|
+    unless v.match(%r{\Ahttps?://})
+      puts opts
+      exit
+    end
+    options[:url] = v
+  end
+
+  opts.on('-s', '--skip', 'Skip check for Liferay') do
+    options[:skip] = true
+  end
+
+  opts.on('-i', '--insecure', 'Skip SSL/TLS validation') do
+    options[:insecure] = true
+  end
+
+  opts.on('--enum-users', 'Enumerate users') do
+    options[:enum_users] = true
+  end
+
+  opts.on('-v', '--verbose', 'Enable verbose output') do
+    options[:verbose] = true
+  end
+
+  opts.on('-h', '--help', 'Show this help') do
+    puts opts
+    exit
+  end
+end
+
+opts.parse!
+
+if options[:url].nil?
+  puts opts
+  exit
+end
+
+def scan(url, check: true, insecure: false, enum_users: false, verbose: false)
+  LiferayScan.logger = ::Logger.new($stdout).tap do |log|
+    log.progname = 'liferay-scan'
+    log.level = verbose ? ::Logger::INFO : ::Logger::WARN
+    log.datetime_format = '%Y-%m-%d %H:%M:%S '
+  end
+
+  LiferayScan.insecure = insecure
+
+  puts "Scan started at #{Time.now.getutc}"
+  puts "URL: #{url}"
+
+  # parse URL
+  target = nil
+  begin
+    target = URI.parse(url.split('?').first)
+  rescue StandardError
+    puts "- Could not parse target URL: #{url}"
+  end
+  exit(1) if target.nil?
+
+  # resolve IP address
+  begin
+    ip = Resolv.getaddress(target.host).to_s
+    puts "IP: #{ip}" unless ip.nil?
+  rescue StandardError
+    puts "- Could not resolve hostname #{target.host}"
+  end
+
+  puts "Port: #{target.port}"
+  puts '-' * 60
+
+  # Check if the URL is Liferay
+  if check
+    unless LiferayScan.detectLiferay(url)
+      puts '- Liferay Portal not found'
+      exit(1)
+    end
+    puts '+ Found Liferay Portal'
+  end
+
+  # Retrieve Liferay version
+  version = LiferayScan.getVersion(url)
+  puts "+ Version: #{version}" if version
+
+  # Retrieve server version
+  server_version = LiferayScan.getServerVersion(url)
+  puts "+ Server version: #{server_version}" if server_version
+
+  # Retrieve client IP address
+  client_ip = LiferayScan.getClientIpAddress(url)
+  puts "+ Client IP address: #{client_ip}" if client_ip
+
+  # Retrieve language
+  language = LiferayScan.getLanguage(url)
+  puts "+ Language: #{language}" if language
+
+  # Retrieve organisation email address domain
+  domain = LiferayScan.getOrganisationEmail(url)
+  puts "+ Organisation Email: #{domain}" if domain
+
+  # Check if SSO is enabled
+  sso = LiferayScan.ssoAuthEnabled(url)
+  puts '+ SSO authentication is enabled' if sso
+
+  # Retrieve users from Open Search
+  users = LiferayScan.getUsersFromSearch(url)
+  unless users.empty?
+    puts "+ Found users (#{users.length}):"
+    table = Terminal::Table.new(headings: ['Screen Name', 'Full Name'], rows: users)
+    puts table
+  end
+
+  # Check if user registration enabled
+  puts '+ User registration is enabled' if LiferayScan.userRegistration(url)
+
+  # Check if SOAP API accessible
+  puts '+ Remote SOAP API is available' if LiferayScan.remoteSoapApi(url)
+
+  # Check if JSON API accessible
+  puts '+ Remote JSON API is available' if LiferayScan.remoteJsonApi(url)
+
+  # Check if Forgot Password is enabled
+  if LiferayScan.passwordResetEnabled(url)
+    puts '+ Password reset is enabled'
+    # Check if Forgot Password uses CAPTCHA
+    puts '+ Password reset does not use CAPTCHA' unless LiferayScan.passwordResetUsesCaptcha(url)
+  end
+
+  # Enumerate users
+  if enum_users
+    users = LiferayScan.enumerateUsersFromBlogRss(url)
+    unless users.empty?
+      puts "+ Found users (#{users.length}):"
+      table = Terminal::Table.new(headings: ['Screen Name', 'Full Name'], rows: users)
+      puts table
+    end
+  end
+
+  puts "Scan finished at #{Time.now.getutc}"
+  puts '-' * 60
+end
+
+scan(
+  options[:url],
+  insecure: options[:insecure],
+  check: !options[:skip],
+  enum_users: options[:enum_users],
+  verbose: options[:verbose]
+)

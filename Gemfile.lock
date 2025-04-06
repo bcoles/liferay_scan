@@ -1,10 +1,23 @@
+PATH
+  remote: .
+  specs:
+    liferay_scan (0.0.2)
+      logger (~> 1.6)
+      terminal-table (~> 4.0)
+
 GEM
   remote: https://rubygems.org/
   specs:
-    terminal-table (1.5.2)
+    logger (1.7.0)
+    terminal-table (4.0.0)
+      unicode-display_width (>= 1.1.1, < 4)
+    unicode-display_width (2.6.0)
 
 PLATFORMS
   ruby
 
 DEPENDENCIES
-  terminal-table
+  liferay_scan!
+
+BUNDLED WITH
+   2.6.6
